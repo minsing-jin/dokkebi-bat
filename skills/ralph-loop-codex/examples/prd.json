@@ -1,0 +1,28 @@
+{
+  "stories": [
+    {
+      "id": "S-001",
+      "title": "Create output",
+      "status": "todo",
+      "builder_commands": [
+        "echo built > output.txt",
+        "printf '%s' '{{constraints}}' > constraints.txt"
+      ],
+      "verifier_commands": [
+        "test -f output.txt",
+        "grep -q -- '--dangerously-skip-permissions' constraints.txt"
+      ]
+    },
+    {
+      "id": "S-002",
+      "title": "Append marker",
+      "status": "todo",
+      "builder_commands": [
+        "echo done >> output.txt"
+      ],
+      "verifier_commands": [
+        "grep -q done output.txt"
+      ]
+    }
+  ]
+}
