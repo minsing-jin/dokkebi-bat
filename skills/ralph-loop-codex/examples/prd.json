@@ -4,6 +4,7 @@
       "id": "S-001",
       "title": "Create output",
       "status": "todo",
+      "priority": 1,
       "builder_commands": [
         "echo built > output.txt",
         "printf '%s' '{{constraints}}' > constraints.txt"
@@ -17,6 +18,7 @@
       "id": "S-002",
       "title": "Append marker",
       "status": "todo",
+      "priority": 2,
       "builder_commands": [
         "echo done >> output.txt"
       ],

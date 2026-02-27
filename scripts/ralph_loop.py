@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -51,7 +52,13 @@ def parse_args() -> argparse.Namespace:
         help="Constraint token for commands (repeatable). Example: --constraint --dangerously-skip-permissions",
     )
     parser.add_argument("--loop", action="store_true", help="Run continuously until no todo story remains")
+    parser.add_argument("--max-retries", type=int, default=3, help="Max retries per story")
     parser.add_argument("--max-iterations", type=int, default=100, help="Safety guard for --loop mode")
+    parser.add_argument(
+        "--allow-missing-agents-md",
+        action="store_true",
+        help="Allow run without AGENTS.md (disabled by default for stricter context safety)",
+    )
     return parser.parse_args(normalize_argv(sys.argv[1:]))
 
 
@@ -71,10 +78,16 @@ def save_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def pick_story(prd: dict[str, Any]) -> dict[str, Any] | None:
-    stories = prd.get("stories", [])
-    for story in stories:
-        if story.get("status", "todo") == "todo":
-            return story
+    def priority_value(story: dict[str, Any]) -> int:
+        try:
+            return int(story.get("priority", 9999))
+        except (TypeError, ValueError):
+            return 9999
+
+    stories = [s for s in prd.get("stories", []) if s.get("status", "todo") == "todo"]
+    stories.sort(key=lambda s: (priority_value(s), str(s.get("id", ""))))
+    if stories:
+        return stories[0]
     return None
 
 
@@ -100,11 +113,46 @@ def append_progress(progress_path: Path, line: str) -> None:
         handle.write(line.rstrip() + "\n")
 
 
+def prepare_ralph_dirs(repo_dir: Path) -> Path:
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ralph_dir = repo_dir / ".ralph"
+    logs_dir = ralph_dir / "logs"
+    runs_dir = ralph_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    if logs_dir.exists() and any(logs_dir.iterdir()):
+        archive_root = runs_dir / run_id
+        archive_root.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(logs_dir), str(archive_root / "logs"))
+
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    (repo_dir / "ERROR.md").unlink(missing_ok=True)
+    return logs_dir
+
+
+def log_command_output(log_path: Path, result: CommandResult) -> None:
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"$ {result.command}\n")
+        handle.write(f"rc={result.returncode}\n")
+        if result.stdout:
+            handle.write(result.stdout)
+            if not result.stdout.endswith("\n"):
+                handle.write("\n")
+        if result.stderr:
+            handle.write("[stderr]\n")
+            handle.write(result.stderr)
+            if not result.stderr.endswith("\n"):
+                handle.write("\n")
+        handle.write("\n")
+
+
 def run_story(
     repo_dir: Path,
     prd_path: Path,
     state_path: Path,
     progress_path: Path,
+    logs_dir: Path,
+    max_retries: int,
     story: dict[str, Any],
     constraints: list[str],
 ) -> bool:
@@ -138,65 +186,103 @@ def run_story(
     for idx, raw in enumerate(builder_commands, start=1):
         print(f"{idx}. {raw}")
 
-    command_results: list[CommandResult] = []
-    for raw in builder_commands:
-        cmd = interpolate(raw, constraints)
-        result = run_shell(cmd, repo_dir)
-        command_results.append(result)
-        print(f"[Command] {cmd}")
-        print(f"[Result] rc={result.returncode}")
-        if result.stdout:
-            print(result.stdout.rstrip())
-        if result.stderr:
-            print(result.stderr.rstrip(), file=sys.stderr)
-        if result.returncode != 0:
-            live_story["status"] = "todo"
-            state.setdefault("failures", []).append(
-                {
-                    "story_id": story_id,
-                    "phase": "builder",
-                    "command": cmd,
-                    "returncode": result.returncode,
-                    "timestamp": utc_now(),
-                }
-            )
-            save_json(prd_path, prd)
-            save_json(state_path, state)
-            append_progress(progress_path, f"- {utc_now()} fail {story_id} builder")
-            print("[Verifier verdict] FAIL - builder command failed")
-            return False
+    error_md = repo_dir / "ERROR.md"
+    for attempt in range(1, max_retries + 1):
+        append_progress(progress_path, f"- {utc_now()} attempt {story_id} {attempt}/{max_retries}")
+        print(f"[Attempt] {attempt}/{max_retries}")
 
-    for raw in verifier_commands:
-        cmd = interpolate(raw, constraints)
-        result = run_shell(cmd, repo_dir)
-        command_results.append(result)
-        print(f"[Command] {cmd}")
-        print(f"[Result] rc={result.returncode}")
-        if result.stdout:
-            print(result.stdout.rstrip())
-        if result.stderr:
-            print(result.stderr.rstrip(), file=sys.stderr)
-        if result.returncode != 0:
-            live_story["status"] = "todo"
-            state.setdefault("failures", []).append(
-                {
-                    "story_id": story_id,
-                    "phase": "verifier",
-                    "command": cmd,
-                    "returncode": result.returncode,
-                    "timestamp": utc_now(),
-                }
-            )
-            save_json(prd_path, prd)
-            save_json(state_path, state)
-            append_progress(progress_path, f"- {utc_now()} fail {story_id} verifier")
-            print("[Verifier verdict] FAIL - verifier command failed")
-            return False
+        builder_ok = True
+        builder_log = logs_dir / f"{story_id}-build-{attempt}.log"
+        verifier_log = logs_dir / f"{story_id}-verify-{attempt}.log"
 
-    live_story["status"] = "done"
-    save_json(prd_path, prd)
-    append_progress(progress_path, f"- {utc_now()} done {story_id}")
-    print("[Verifier verdict] PASS")
+        for raw in builder_commands:
+            cmd = interpolate(raw, constraints)
+            result = run_shell(cmd, repo_dir)
+            log_command_output(builder_log, result)
+            print(f"[Command] {cmd}")
+            print(f"[Result] rc={result.returncode}")
+            if result.stdout:
+                print(result.stdout.rstrip())
+            if result.stderr:
+                print(result.stderr.rstrip(), file=sys.stderr)
+            if result.returncode != 0:
+                builder_ok = False
+                state.setdefault("failures", []).append(
+                    {
+                        "story_id": story_id,
+                        "attempt": attempt,
+                        "phase": "builder",
+                        "command": cmd,
+                        "returncode": result.returncode,
+                        "timestamp": utc_now(),
+                    }
+                )
+                break
+
+        if not builder_ok:
+            if not error_md.exists():
+                error_md.write_text(
+                    f"# Error\n\nBuilder failed for {story_id} on attempt {attempt}.\n",
+                    encoding="utf-8",
+                )
+            append_progress(progress_path, f"- {utc_now()} fail {story_id} builder attempt={attempt}")
+            save_json(state_path, state)
+            if attempt == max_retries:
+                live_story["status"] = "todo"
+                save_json(prd_path, prd)
+                append_progress(progress_path, f"- {utc_now()} exhausted {story_id}")
+                print("[Verifier verdict] FAIL - builder exhausted retries")
+                return False
+            continue
+
+        error_md.unlink(missing_ok=True)
+        verifier_failed = False
+        for raw in verifier_commands:
+            cmd = interpolate(raw, constraints)
+            result = run_shell(cmd, repo_dir)
+            log_command_output(verifier_log, result)
+            print(f"[Command] {cmd}")
+            print(f"[Result] rc={result.returncode}")
+            if result.stdout:
+                print(result.stdout.rstrip())
+            if result.stderr:
+                print(result.stderr.rstrip(), file=sys.stderr)
+            if result.returncode != 0:
+                verifier_failed = True
+                state.setdefault("failures", []).append(
+                    {
+                        "story_id": story_id,
+                        "attempt": attempt,
+                        "phase": "verifier",
+                        "command": cmd,
+                        "returncode": result.returncode,
+                        "timestamp": utc_now(),
+                    }
+                )
+                break
+
+        if verifier_failed or error_md.exists():
+            if not error_md.exists():
+                error_md.write_text(
+                    f"# Error\n\nVerifier failed for {story_id} on attempt {attempt}.\n",
+                    encoding="utf-8",
+                )
+            append_progress(progress_path, f"- {utc_now()} fail {story_id} verifier attempt={attempt}")
+            save_json(state_path, state)
+            if attempt == max_retries:
+                live_story["status"] = "todo"
+                save_json(prd_path, prd)
+                append_progress(progress_path, f"- {utc_now()} exhausted {story_id}")
+                print("[Verifier verdict] FAIL - verifier exhausted retries")
+                return False
+            continue
+
+        live_story["status"] = "done"
+        save_json(prd_path, prd)
+        append_progress(progress_path, f"- {utc_now()} done {story_id} attempts={attempt}")
+        print("[Verifier verdict] PASS")
+        error_md.unlink(missing_ok=True)
+        break
 
     remaining = [s for s in prd.get("stories", []) if s.get("status") == "todo"]
     if remaining:
@@ -215,10 +301,15 @@ def main() -> int:
     state_path = repo_dir / args.state_file
     progress_path = repo_dir / args.progress_file
 
+    if not args.allow_missing_agents_md and not (repo_dir / "AGENTS.md").exists():
+        print("AGENTS.md not found in repo root. Create it first.", file=sys.stderr)
+        return 1
+
     load_json(prd_path, {"stories": []})
     load_json(state_path, {"failures": []})
     if not progress_path.exists():
         progress_path.write_text("# Ralph Progress\n\n", encoding="utf-8")
+    logs_dir = prepare_ralph_dirs(repo_dir)
 
     iterations = 0
     while True:
@@ -228,7 +319,16 @@ def main() -> int:
             print("No todo stories left.")
             return 0
 
-        ok = run_story(repo_dir, prd_path, state_path, progress_path, story, args.constraint)
+        ok = run_story(
+            repo_dir,
+            prd_path,
+            state_path,
+            progress_path,
+            logs_dir,
+            args.max_retries,
+            story,
+            args.constraint,
+        )
         iterations += 1
 
         if not ok:

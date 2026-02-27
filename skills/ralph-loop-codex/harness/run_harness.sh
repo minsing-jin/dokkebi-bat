@@ -10,10 +10,15 @@ cleanup() {
 trap cleanup EXIT
 
 cp "$ROOT_DIR/skills/ralph-loop-codex/examples/prd.json" "$TMP_DIR/prd.json"
+cat > "$TMP_DIR/AGENTS.md" <<'EOF2'
+# Agents
+Use repository conventions.
+EOF2
 
 python3 "$ROOT_DIR/scripts/ralph_loop.py" \
   --repo "$TMP_DIR" \
   --loop \
+  --max-retries 3 \
   --constraint "--dangerously-skip-permissions"
 
 python3 - "$TMP_DIR/prd.json" <<'PY'
