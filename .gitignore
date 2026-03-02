@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+.venv/
+.ralph/
+.codex/
+.DS_Store

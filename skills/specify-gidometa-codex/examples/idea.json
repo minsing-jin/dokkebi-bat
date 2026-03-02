@@ -1,0 +1,86 @@
+{
+  "project": {
+    "title": "New Product",
+    "goal": "Build a production-ready MVP with evidence-gated delivery"
+  },
+  "tech_stack": {
+    "framework": "FastAPI",
+    "database": "PostgreSQL",
+    "infrastructure": "AWS",
+    "deployment": "container",
+    "test_strategy": "unit+integration+e2e"
+  },
+  "generate": {
+    "arch": true,
+    "conventions": true,
+    "adr": true
+  },
+  "qa": {
+    "scenarios": [
+      {
+        "name": "Smoke check",
+        "command": "test -f README.md",
+        "story_id": "S-001"
+      }
+    ]
+  },
+  "stories": [
+    {
+      "id": "S-001",
+      "title": "Bootstrap API service",
+      "priority": 1,
+      "acceptance_criteria": [
+        "API app entrypoint exists",
+        "health endpoint spec is documented"
+      ],
+      "non_goals": [
+        "No auth integration in this story"
+      ],
+      "constraints": [
+        "Use Python 3.10+",
+        "Keep diff minimal"
+      ],
+      "dependencies": [],
+      "risks": [
+        "Missing reproducible local run command"
+      ],
+      "success_metrics": [
+        "Local smoke command exits 0"
+      ],
+      "tech_stack_options": [
+        "FastAPI + Uvicorn",
+        "Flask + Gunicorn"
+      ],
+      "selected_stack": "FastAPI + Uvicorn",
+      "adr_topic": "API framework decision",
+      "phase_config": {
+        "specify_commands": [
+          "echo 'specify S-001' > specify-S-001.txt"
+        ],
+        "planner_commands": [
+          "echo 'planner S-001' > planner-S-001.txt"
+        ],
+        "context_scribe_commands": [
+          "echo 'context S-001' > context-S-001.txt"
+        ],
+        "show_me_hook_commands": [],
+        "implementer_commands": [
+          "mkdir -p app && printf '%s\n' 'from fastapi import FastAPI' 'app = FastAPI()' > app/main.py"
+        ],
+        "testsmith_commands": [
+          "test -f app/main.py"
+        ],
+        "verifier_commands": [
+          "test -f app/main.py"
+        ],
+        "review_commands": [
+          "grep -q FastAPI app/main.py"
+        ],
+        "issue_tiger_commands": [],
+        "qa_commands": [
+          "test -f app/main.py"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+# Ralph loop profile examples
+
+[profiles.ralph_build]
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+model = "gpt-5"
+
+[profiles.ralph_review]
+sandbox_mode = "read-only"
+approval_policy = "never"
+model = "gpt-5"
+
+# Optional role templates
+[roles.explorer]
+profile = "ralph_review"
+description = "Read-only discovery and risk surfacing"
+
+[roles.worker]
+profile = "ralph_build"
+description = "Single-task implementation worker"
+
+[roles.reviewer]
+profile = "ralph_review"
+description = "Independent review and regression checks"

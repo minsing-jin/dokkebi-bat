@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ralph Loop Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "mode", "summary", "did_modify_files", "changed_files", "gate", "notes"],
+  "properties": {
+    "status": { "type": "string", "enum": ["CONTINUE", "LOOP_COMPLETE", "NEEDS_HUMAN"] },
+    "mode": { "type": "string", "enum": ["plan", "build", "review"] },
+    "summary": { "type": "string", "minLength": 1 },
+    "did_modify_files": { "type": "boolean" },
+    "changed_files": { "type": "array", "items": { "type": "string" } },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ran", "result", "commands"],
+      "properties": {
+        "ran": { "type": "boolean" },
+        "result": { "type": "string", "enum": ["pass", "fail", "skipped"] },
+        "commands": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  }
+}

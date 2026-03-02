@@ -1,0 +1,11 @@
+# Example execpolicy rules (adjust to your environment)
+
+# Safe reads
+allow ^(ls|pwd|cat|sed|awk|rg|find|git\ status|git\ diff|git\ log).*
+
+# Build/test commands (prompt)
+prompt ^(npm|pnpm|yarn|python3?\ -m\ pytest|go\ test|cargo\ test).*
+prompt ^(git\ push|git\ commit).*
+
+# Potentially dangerous operations
+forbid ^(rm\ -rf\ /|sudo\ .*|mkfs\ .*|dd\ .*|shutdown\ .*|reboot\ .*).*

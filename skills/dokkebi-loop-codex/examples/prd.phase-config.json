@@ -1,0 +1,35 @@
+{
+  "stories": [
+    {
+      "id": "PC-001",
+      "title": "Artifact contract bootstrap",
+      "mode": "v2",
+      "status": "todo",
+      "priority": 1,
+      "acceptance_criteria": [
+        "story.md, plan.md, context_pack.md가 자동 생성된다",
+        "evidence.md가 PASS 시 생성된다"
+      ],
+      "constraints": ["no-destructive-git"],
+      "dependencies": [],
+      "risks": ["incorrect command mapping"],
+      "non_goals": ["production deployment"],
+      "success_metrics": ["all verifier commands return 0"],
+      "phase_config": {
+        "implementer_commands": [
+          "echo v2 > out.txt"
+        ],
+        "testsmith_commands": [
+          "grep -q v2 out.txt"
+        ],
+        "verifier_commands": [
+          "test -f out.txt"
+        ],
+        "review_commands": [
+          "grep -q v2 out.txt"
+        ],
+        "qa_commands": []
+      }
+    }
+  ]
+}
