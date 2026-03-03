@@ -1,5 +1,11 @@
 # AGENTS
 
+## Activation Policy (Explicit Only)
+- Dokkebi Loop (Ralph Loop) is opt-in only.
+- Never start loop execution by default.
+- Run the loop only when the user explicitly requests it (for example: `dokkebi-loop-codex`, `ralph loop`, `python3 .../ralph_loop.py`, `./run-dokkebi-loop.sh`).
+- For normal Q&A, explanation, and small/manual code edits, do not invoke the loop.
+
 ## Ralph Loop Principles
 - Artifact-first: files are the system memory.
 - Evidence-gated: PASS requires executable evidence.

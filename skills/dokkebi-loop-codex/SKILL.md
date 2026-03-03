@@ -5,6 +5,11 @@ description: Use when you want an autonomous builder/verifier loop from prd.json
 
 # Dokkebi Loop Codex
 
+## Activation Policy
+- This skill is explicit-only (opt-in).
+- Do not run automatically from general conversation or regular coding tasks.
+- Execute only when the user explicitly asks to run Dokkebi/Ralph loop or directly provides a loop command.
+
 Use `skills/dokkebi-loop-codex/scripts/ralph_loop.py` to process one `todo` story at a time from `prd.json`.
 
 ## Required Files
