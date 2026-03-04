@@ -37,16 +37,23 @@ install_codex_skills() {
 
 install_claude() {
   local skills_root="${HOME}/.claude/skills"
+  local hooks_root="${HOME}/.claude/hooks"
   local legacy_target="${skills_root}/ralph-loop-codex"
   local dokkebi_target="${skills_root}/dokkebi-loop-codex"
   local specify_target="${skills_root}/specify-gidometa-codex"
   local prdmd_target="${skills_root}/prd-md-to-json-codex"
   mkdir -p "$skills_root"
+  mkdir -p "$hooks_root"
   rm -rf "$legacy_target" "$dokkebi_target" "$specify_target" "$prdmd_target"
   cp -R "$SKILL_DIR" "$dokkebi_target"
   cp -R "$ROOT_DIR/skills/specify-gidometa-codex" "$specify_target"
   cp -R "$ROOT_DIR/skills/prd-md-to-json-codex" "$prdmd_target"
+  cp "$SKILL_DIR/hooks/permission-gates.py" "$hooks_root/permission-gates.py"
+  cp "$SKILL_DIR/hooks/permission-reviewer.py" "$hooks_root/permission-reviewer.py"
+  cp "$SKILL_DIR/hooks/workflow-post.sh" "$hooks_root/workflow-post.sh"
+  chmod +x "$hooks_root/permission-gates.py" "$hooks_root/permission-reviewer.py" "$hooks_root/workflow-post.sh"
   echo "[setup] Claude skills installed to $skills_root (canonical: dokkebi-loop-codex)"
+  echo "[setup] Claude hooks installed to $hooks_root"
 }
 
 install_project_codex() {

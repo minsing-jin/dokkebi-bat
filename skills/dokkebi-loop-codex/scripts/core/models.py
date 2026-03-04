@@ -60,6 +60,8 @@ class RunOptions:
     emit_context_pack: str
     lessons_mode: str
     mode: str
+    permission_profile: str
+    deny_on_ask: bool
 
 
 @dataclass

@@ -11,6 +11,13 @@ RESULT="skipped"
 RAN_ANY=0
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
+has_pytest_module() {
+  local pybin="$1"
+  "$pybin" - <<'PY' >/dev/null 2>&1
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec("pytest") else 1)
+PY
+}
 
 run_cmd() {
   local cmd="$1"
@@ -62,11 +69,17 @@ fi
 
 if [ -d tests ] || [ -f pytest.ini ] || [ -f setup.cfg ] || [ -f tox.ini ] || grep -qi pytest pyproject.toml 2>/dev/null; then
   if [ -x .venv/bin/python ]; then
-    run_cmd ".venv/bin/python -m pytest -q"
+    if has_pytest_module .venv/bin/python; then
+      run_cmd ".venv/bin/python -m pytest -q"
+    fi
   elif have_cmd python3; then
-    run_cmd "python3 -m pytest -q"
+    if has_pytest_module python3; then
+      run_cmd "python3 -m pytest -q"
+    fi
   elif have_cmd python; then
-    run_cmd "python -m pytest -q"
+    if has_pytest_module python; then
+      run_cmd "python -m pytest -q"
+    fi
   fi
 fi
 

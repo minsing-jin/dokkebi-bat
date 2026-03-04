@@ -1,0 +1,149 @@
+{
+  "profiles": {
+    "balanced": {
+      "secret_path_regex": "(^|[ \\t\\\"'/])\\.env(\\.[^ \\t\\\"'/]+)?($|[ \\t\\\"'/])",
+      "deny_patterns": [
+        {
+          "pattern": "(^|\\s)rm\\s+-rf\\s+/$",
+          "reason": "destructive root deletion is forbidden"
+        },
+        {
+          "pattern": "(^|\\s)(sudo\\s+.+|mkfs\\s+.+|dd\\s+.+|shutdown\\s+.+|reboot\\s+.+)$",
+          "reason": "dangerous system-level command is forbidden"
+        },
+        {
+          "pattern": "git\\s+push\\s+[^\\n]*\\b(main|master)\\b",
+          "reason": "direct push to main/master requires manual review"
+        }
+      ],
+      "ask_patterns": [
+        {
+          "pattern": "(^|\\s)rm\\s+",
+          "reason": "file deletion requires confirmation"
+        },
+        {
+          "pattern": "git\\s+push\\b",
+          "reason": "git push requires confirmation"
+        },
+        {
+          "pattern": "\\b(gh\\s+pr\\s+merge|git\\s+merge)\\b",
+          "reason": "merge operation requires confirmation"
+        }
+      ],
+      "allow_patterns": [
+        {
+          "pattern": "^(ls|pwd|cat|sed|awk|rg|find|git\\s+status|git\\s+diff|git\\s+log).*",
+          "reason": "safe read-only command"
+        },
+        {
+          "pattern": "^(python3?\\s+-m\\s+pytest|pytest|npm|pnpm|yarn|go\\s+test|cargo\\s+test).*",
+          "reason": "build/test command"
+        }
+      ],
+      "psql": {
+        "read_starts": [
+          "select",
+          "with"
+        ],
+        "write_keywords": [
+          "insert",
+          "update",
+          "delete",
+          "truncate",
+          "alter",
+          "create",
+          "grant",
+          "revoke",
+          "vacuum",
+          "analyze",
+          "comment",
+          "do",
+          "call",
+          "copy",
+          "refresh",
+          "reindex",
+          "cluster",
+          "lock",
+          "set",
+          "reset",
+          "begin",
+          "commit",
+          "rollback",
+          "savepoint",
+          "prepare",
+          "execute"
+        ],
+        "deny_keywords": [
+          "drop"
+        ]
+      }
+    },
+    "strict": {
+      "secret_path_regex": "(^|[ \\t\\\"'/])\\.env(\\.[^ \\t\\\"'/]+)?($|[ \\t\\\"'/])",
+      "deny_patterns": [
+        {
+          "pattern": "(^|\\s)rm\\s+-rf\\s+/$",
+          "reason": "destructive root deletion is forbidden"
+        },
+        {
+          "pattern": "git\\s+push\\s+[^\\n]*\\b(main|master)\\b",
+          "reason": "direct push to main/master is forbidden in strict profile"
+        }
+      ],
+      "ask_patterns": [
+        {
+          "pattern": "(^|\\s)rm\\s+",
+          "reason": "all deletions require confirmation in strict profile"
+        },
+        {
+          "pattern": "git\\s+push\\b",
+          "reason": "all pushes require confirmation in strict profile"
+        }
+      ],
+      "allow_patterns": [],
+      "psql": {
+        "read_starts": [
+          "select",
+          "with"
+        ],
+        "write_keywords": [
+          "insert",
+          "update",
+          "delete",
+          "truncate",
+          "alter",
+          "create"
+        ],
+        "deny_keywords": [
+          "drop"
+        ]
+      }
+    },
+    "fast": {
+      "secret_path_regex": "(^|[ \\t\\\"'/])\\.env(\\.[^ \\t\\\"'/]+)?($|[ \\t\\\"'/])",
+      "deny_patterns": [
+        {
+          "pattern": "(^|\\s)rm\\s+-rf\\s+/$",
+          "reason": "destructive root deletion is forbidden"
+        }
+      ],
+      "ask_patterns": [],
+      "allow_patterns": [],
+      "psql": {
+        "read_starts": [
+          "select",
+          "with"
+        ],
+        "write_keywords": [
+          "insert",
+          "update",
+          "delete",
+          "truncate"
+        ],
+        "deny_keywords": [
+          "drop"
+        ]
+      }
+    }
+  }
+}

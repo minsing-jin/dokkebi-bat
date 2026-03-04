@@ -92,3 +92,17 @@ Verifier Commands:
     phase = prd["stories"][0]["phase_config"]
     assert phase["implementer_commands"] == ["echo impl > impl.txt"]
     assert phase["verifier_commands"] == ["test -f impl.txt"]
+
+
+def test_non_story_h2_headers_do_not_split_into_many_stories(tmp_path: Path) -> None:
+    md = """
+## 0) 프로젝트 목표
+내용 A
+
+## 1) 산출물
+내용 B
+"""
+    result = run_convert(tmp_path, md)
+    assert result.returncode == 0, result.stderr
+    prd = json.loads((tmp_path / "prd.json").read_text(encoding="utf-8"))
+    assert len(prd["stories"]) == 1

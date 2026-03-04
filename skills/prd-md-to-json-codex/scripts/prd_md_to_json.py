@@ -19,10 +19,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def _extract_story_blocks(text: str) -> list[tuple[str, str]]:
-    pattern = re.compile(r"^##\s*(?:Story[:\-\s]*)?(?P<title>.+?)\s*$", re.MULTILINE)
+    # Only treat explicitly tagged story headings as individual stories.
+    # This prevents random section headers from becoming fake stories.
+    pattern = re.compile(r"^##\s*(?:Story|스토리)[:\-\s]+(?P<title>.+?)\s*$", re.MULTILINE)
     matches = list(pattern.finditer(text))
     if not matches:
-        return [("Default Story", text)]
+        return [("Default Story", text.strip())]
     blocks: list[tuple[str, str]] = []
     for idx, m in enumerate(matches):
         start = m.end()
@@ -175,13 +177,19 @@ def _story_json(title: str, block: str, idx: int, mode: str) -> dict[str, Any]:
         block,
         ["verifier commands", "verify commands", "validation commands", "test commands"],
     )
+    explicit_testsmith = _extract_list(block, ["testsmith commands", "regression test commands", "adversarial test commands"])
+    explicit_review = _extract_list(block, ["review commands", "quality review commands"])
+    explicit_qa = _extract_list(block, ["qa commands", "run commands", "e2e commands"])
     if explicit_implementer:
         phase_commands["implementer_commands"] = explicit_implementer
     if explicit_verifier:
         phase_commands["verifier_commands"] = explicit_verifier
-        phase_commands["testsmith_commands"] = explicit_verifier
-        phase_commands["review_commands"] = explicit_verifier
-        phase_commands["qa_commands"] = explicit_verifier
+    if explicit_testsmith:
+        phase_commands["testsmith_commands"] = explicit_testsmith
+    if explicit_review:
+        phase_commands["review_commands"] = explicit_review
+    if explicit_qa:
+        phase_commands["qa_commands"] = explicit_qa
     if mode == "basic":
         story["builder_commands"] = list(phase_commands["implementer_commands"])
         story["verifier_commands"] = list(phase_commands["verifier_commands"])

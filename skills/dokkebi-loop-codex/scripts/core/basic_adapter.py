@@ -154,8 +154,8 @@ def validate_prd_contract(prd: dict[str, Any], requested_mode: str, story_id: st
             errors.append(f"{prefix}: missing/invalid `id`")
         if not _is_nonempty_str(story.get("title")):
             errors.append(f"{prefix}: missing/invalid `title`")
-        if status not in {"todo", "doing", "done"}:
-            errors.append(f"{prefix}: `status` must be one of todo|doing|done")
+        if status not in {"todo", "doing", "done", "blocked"}:
+            errors.append(f"{prefix}: `status` must be one of todo|doing|done|blocked")
         if "priority" not in story:
             errors.append(f"{prefix}: missing field `priority`")
         else:
@@ -181,7 +181,7 @@ def validate_prd_contract(prd: dict[str, Any], requested_mode: str, story_id: st
             if not isinstance(phase_config, dict):
                 errors.append(f"{prefix}: missing/invalid `phase_config` object")
                 continue
-            for key in ["implementer_commands", "verifier_commands"]:
+            for key in ["implementer_commands", "testsmith_commands", "verifier_commands", "qa_commands"]:
                 value = phase_config.get(key)
                 if not isinstance(value, list) or len(value) == 0:
                     errors.append(f"{prefix}: `phase_config.{key}` must be a non-empty list")

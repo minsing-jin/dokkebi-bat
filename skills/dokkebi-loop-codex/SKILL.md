@@ -39,6 +39,18 @@ Each story should include:
 python3 skills/dokkebi-loop-codex/scripts/ralph_loop.py --repo .
 ```
 
+## Permission Policy (Balanced default)
+- The loop applies command-level permission checks before each phase command.
+- Default profile: `balanced`
+- Profiles: `balanced`, `strict`, `fast`
+- Default policy file: `skills/dokkebi-loop-codex/policy/permission_policy.json`
+
+```bash
+python3 skills/dokkebi-loop-codex/scripts/ralph_loop.py --repo . \
+  --permission-profile balanced \
+  --deny-on-ask
+```
+
 ## Bootstrap PRD Then Run
 ```bash
 python3 skills/dokkebi-loop-codex/scripts/ralph_loop.py \

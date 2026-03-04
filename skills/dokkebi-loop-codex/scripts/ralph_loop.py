@@ -23,6 +23,7 @@ from core.artifacts import (
 from core.files import append_jsonl, append_progress, load_json, prepare_ralph_dirs, save_json, utc_now
 from core.basic_adapter import pick_story, validate_prd_contract
 from core.models import Paths, RunOptions
+from core.policy import PermissionPolicy, evaluate_command_policy, load_permission_policy
 from core.role_agents import (
     apply_show_me_hook,
     run_context_scribe_builtin,
@@ -31,7 +32,7 @@ from core.role_agents import (
     run_qa_dr_strange,
     run_specify_builtin,
 )
-from core.runtime import capture_git_snapshot, command_result_as_dict
+from core.runtime import capture_git_snapshot, command_result_as_dict, interpolate
 from phases.command_phase import run_commands, run_single_expect_fail, run_single_expect_pass
 
 
@@ -138,6 +139,7 @@ def normalize_argv(argv: list[str]) -> list[str]:
 
 
 def parse_args() -> argparse.Namespace:
+    default_policy = Path(__file__).resolve().parents[1] / "policy" / "permission_policy.json"
     parser = argparse.ArgumentParser(description="Run Ralph loop from prd.json")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--prd-file", default="prd.json")
@@ -155,6 +157,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict-agents-md", action="store_true")
     parser.add_argument("--story-id", default="")
     parser.add_argument("--mode", choices=["auto", "basic", "phase-config"], default="auto")
+    parser.add_argument("--permission-profile", choices=["balanced", "strict", "fast"], default="balanced")
+    parser.add_argument("--permission-policy", default=str(default_policy))
+    parser.add_argument("--deny-on-ask", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--emit-context-pack", choices=["always", "on-fail", "on-pass"], default="always")
     parser.add_argument("--lessons-mode", choices=["off", "append", "append-and-inject"], default="append-and-inject")
@@ -257,11 +262,29 @@ def _flatten_trace_commands(trace: dict[str, Any]) -> list[dict[str, Any]]:
         result.append(dict(trace["gate"]))
     for item in trace.get("qa", []) or []:
         result.append(dict(item))
+    for item in trace.get("policy", []) or []:
+        result.append(
+            {
+                "command": str(item.get("command", "")),
+                "returncode": int(item.get("returncode", 0)),
+                "stdout": "",
+                "stderr": str(item.get("reason", "")),
+            }
+        )
     return result
 
 
 def _write_attempt_trace(logs_dir: Path, story_id: str, attempt: int, trace: dict[str, Any]) -> None:
     (logs_dir / f"{story_id}-attempt-{attempt}.json").write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_policy_trace(logs_dir: Path, story_id: str, attempt: int, policy_events: list[dict[str, Any]]) -> None:
+    payload = {
+        "story_id": story_id,
+        "attempt": attempt,
+        "events": policy_events,
+    }
+    (logs_dir / f"{story_id}-policy-{attempt}.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _write_debug_bundle(logs_dir: Path, story_id: str, attempt: int, phase: str, command: str, returncode: int, repo_dir: Path) -> None:
@@ -335,6 +358,24 @@ def _record_progress(
     )
 
 
+def _defer_failed_story(paths: Paths, state: dict[str, Any]) -> tuple[str, str]:
+    story_id = str(state.get("current_story_id", "")).strip()
+    if not story_id:
+        return "", ""
+    fail_counts = state.setdefault("story_fail_counts", {})
+    count = int(fail_counts.get(story_id, 0)) + 1
+    fail_counts[story_id] = count
+    save_json(paths.state_path, state)
+    prd = load_json(paths.prd_path, {"stories": []})
+    for story in prd.get("stories", []):
+        if str(story.get("id")) != story_id:
+            continue
+        story["status"] = "todo"
+        save_json(paths.prd_path, prd)
+        return story_id, "retry_same"
+    return "", ""
+
+
 def _build_verifier_feedback(story_obj: Any, trace: dict[str, Any]) -> dict[str, list[str]]:
     # Lightweight soft gate scoring to keep evidence actionable.
     test_count = len(trace.get("testsmith", [])) + (1 if trace.get("tdd", {}).get("green") else 0)
@@ -372,7 +413,14 @@ def _build_verifier_feedback(story_obj: Any, trace: dict[str, Any]) -> dict[str,
     }
 
 
-def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_obj: Any, options: RunOptions) -> bool:
+def run_story(
+    paths: Paths,
+    prd: dict[str, Any],
+    state: dict[str, Any],
+    story_obj: Any,
+    options: RunOptions,
+    permission_policy: PermissionPolicy,
+) -> bool:
     story_id = story_obj.story_id
     title = story_obj.title
     _update_story_status(prd, story_id, "doing")
@@ -389,6 +437,13 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
     print("[Builder plan]")
     for idx, cmd in enumerate(story_obj.builder_commands, start=1):
         print(f"{idx}. {cmd}")
+    print("[Execution plan]")
+    print(f"- implementer: {len(story_obj.builder_commands)} commands")
+    print(f"- testsmith: {len(story_obj.testsmith_commands)} commands")
+    print(f"- verifier: {len(story_obj.verifier_commands)} commands")
+    print(f"- review: {len(story_obj.review_commands)} commands")
+    print(f"- issue_tiger: {len(story_obj.issue_tiger_commands)} commands")
+    print(f"- qa: {len(story_obj.qa_commands)} commands")
     append_progress(paths.progress_path, f"- {utc_now()} start {story_id} {title}")
 
     if not story_obj.builder_commands or not story_obj.verifier_commands:
@@ -423,6 +478,7 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
             "review": [],
             "issue_tiger": [],
             "qa": [],
+            "policy": [],
             "tdd": {"red": None, "green": None},
             "gate": None,
             "outcome": "in_progress",
@@ -457,6 +513,7 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
             trace["failure"] = {"phase": phase, "command": failed_command, "returncode": rc}
             trace["git_after"] = capture_git_snapshot(paths.repo_dir)
             _write_attempt_trace(paths.logs_dir, story_id, attempt, trace)
+            _write_policy_trace(paths.logs_dir, story_id, attempt, trace.get("policy", []))
             _write_debug_bundle(paths.logs_dir, story_id, attempt, phase, failed_command, rc, paths.repo_dir)
             repro = write_errors(
                 contract["errors"],
@@ -504,9 +561,42 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                 return False
             return True
 
+        def enforce_policy_or_fail(phase: str, commands: list[str], summary: str) -> str:
+            for raw in commands:
+                rendered = interpolate(raw, options.constraints)
+                decision = evaluate_command_policy(rendered, permission_policy)
+                event = {
+                    "phase": phase,
+                    "command": rendered,
+                    "decision": decision.decision,
+                    "reason": decision.reason,
+                    "matched_rule": decision.matched_rule,
+                    "returncode": 0,
+                }
+                if decision.decision == "deny" or (decision.decision == "ask" and options.deny_on_ask):
+                    event["returncode"] = 126
+                    trace["policy"].append(event)
+                    _write_policy_trace(paths.logs_dir, story_id, attempt, trace["policy"])
+                    blocked_reason = f"permission policy {decision.decision}: {decision.reason}"
+                    if fail("policy", rendered, 126, "", blocked_reason, f"Permission policy blocked {phase} command"):
+                        return "retry"
+                    return "abort"
+                trace["policy"].append(event)
+            return "ok"
+
         def run_phase_or_fail(phase: str, commands: list[str], log_path: Path, summary: str) -> str:
+            policy_result = enforce_policy_or_fail(phase, commands, summary)
+            if policy_result != "ok":
+                return policy_result
             ok, results, failed = run_commands(phase, commands, options.constraints, paths.repo_dir, log_path)
             trace[phase] = [command_result_as_dict(x) for x in results]
+            for x in results:
+                print(f"[{phase}] {x.command}")
+                print(f"[Result] rc={x.returncode}")
+                if x.stdout:
+                    print(x.stdout.rstrip())
+                if x.stderr:
+                    print(x.stderr.rstrip(), file=sys.stderr)
             if not ok and failed is not None:
                 if fail(phase, failed.command, failed.returncode, failed.stdout, failed.stderr, summary):
                     return "retry"
@@ -593,6 +683,25 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                 return False
 
         if story_obj.tdd_red_command:
+            rendered = interpolate(story_obj.tdd_red_command, options.constraints)
+            decision = evaluate_command_policy(rendered, permission_policy)
+            event = {
+                "phase": "tdd_red",
+                "command": rendered,
+                "decision": decision.decision,
+                "reason": decision.reason,
+                "matched_rule": decision.matched_rule,
+                "returncode": 0,
+            }
+            if decision.decision == "deny" or (decision.decision == "ask" and options.deny_on_ask):
+                event["returncode"] = 126
+                trace["policy"].append(event)
+                _write_policy_trace(paths.logs_dir, story_id, attempt, trace["policy"])
+                blocked_reason = f"permission policy {decision.decision}: {decision.reason}"
+                if fail("policy", rendered, 126, "", blocked_reason, "Permission policy blocked tdd_red command"):
+                    continue
+                return False
+            trace["policy"].append(event)
             ok, result = run_single_expect_fail(story_obj.tdd_red_command, options.constraints, paths.repo_dir, tdd_log)
             trace["tdd"]["red"] = command_result_as_dict(result)
             if not ok:
@@ -600,6 +709,11 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                     continue
                 return False
 
+        policy_result = enforce_policy_or_fail("builder", story_obj.builder_commands, "Permission policy blocked builder command")
+        if policy_result == "retry":
+            continue
+        if policy_result == "abort":
+            return False
         ok, results, failed = run_commands("builder", story_obj.builder_commands, options.constraints, paths.repo_dir, builder_log)
         trace["builder"] = [command_result_as_dict(x) for x in results]
         for x in results:
@@ -614,6 +728,11 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                 continue
             return False
 
+        policy_result = enforce_policy_or_fail("testsmith", story_obj.testsmith_commands, "Permission policy blocked testsmith command")
+        if policy_result == "retry":
+            continue
+        if policy_result == "abort":
+            return False
         ok, results, failed = run_commands("testsmith", story_obj.testsmith_commands, options.constraints, paths.repo_dir, testsmith_log)
         trace["testsmith"] = [command_result_as_dict(x) for x in results]
         if not ok and failed is not None:
@@ -622,6 +741,11 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
             return False
 
         error_md.unlink(missing_ok=True)
+        policy_result = enforce_policy_or_fail("verifier", story_obj.verifier_commands, "Permission policy blocked verifier command")
+        if policy_result == "retry":
+            continue
+        if policy_result == "abort":
+            return False
         ok, results, failed = run_commands("verifier", story_obj.verifier_commands, options.constraints, paths.repo_dir, verifier_log)
         trace["verifier"] = [command_result_as_dict(x) for x in results]
         for x in results:
@@ -641,6 +765,25 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
             return False
 
         if story_obj.tdd_green_command:
+            rendered = interpolate(story_obj.tdd_green_command, options.constraints)
+            decision = evaluate_command_policy(rendered, permission_policy)
+            event = {
+                "phase": "tdd_green",
+                "command": rendered,
+                "decision": decision.decision,
+                "reason": decision.reason,
+                "matched_rule": decision.matched_rule,
+                "returncode": 0,
+            }
+            if decision.decision == "deny" or (decision.decision == "ask" and options.deny_on_ask):
+                event["returncode"] = 126
+                trace["policy"].append(event)
+                _write_policy_trace(paths.logs_dir, story_id, attempt, trace["policy"])
+                blocked_reason = f"permission policy {decision.decision}: {decision.reason}"
+                if fail("policy", rendered, 126, "", blocked_reason, "Permission policy blocked tdd_green command"):
+                    continue
+                return False
+            trace["policy"].append(event)
             ok, result = run_single_expect_pass(story_obj.tdd_green_command, options.constraints, paths.repo_dir, tdd_log)
             trace["tdd"]["green"] = command_result_as_dict(result)
             if not ok:
@@ -648,6 +791,11 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                     continue
                 return False
 
+        policy_result = enforce_policy_or_fail("review", story_obj.review_commands, "Permission policy blocked review command")
+        if policy_result == "retry":
+            continue
+        if policy_result == "abort":
+            return False
         ok, results, failed = run_commands("review", story_obj.review_commands, options.constraints, paths.repo_dir, review_log)
         trace["review"] = [command_result_as_dict(x) for x in results]
         if not ok and failed is not None:
@@ -655,6 +803,11 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                 continue
             return False
 
+        policy_result = enforce_policy_or_fail("issue_tiger", story_obj.issue_tiger_commands, "Permission policy blocked issue tiger command")
+        if policy_result == "retry":
+            continue
+        if policy_result == "abort":
+            return False
         ok, results, failed = run_commands(
             "issue_tiger",
             story_obj.issue_tiger_commands,
@@ -675,6 +828,24 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
             return False
 
         if _should_run_gate(paths.repo_dir, options.gate_command, options.skip_gate):
+            gate_policy = evaluate_command_policy(options.gate_command, permission_policy)
+            trace["policy"].append(
+                {
+                    "phase": "gate",
+                    "command": options.gate_command,
+                    "decision": gate_policy.decision,
+                    "reason": gate_policy.reason,
+                    "matched_rule": gate_policy.matched_rule,
+                    "returncode": 0,
+                }
+            )
+            if gate_policy.decision == "deny" or (gate_policy.decision == "ask" and options.deny_on_ask):
+                trace["policy"][-1]["returncode"] = 126
+                _write_policy_trace(paths.logs_dir, story_id, attempt, trace["policy"])
+                blocked_reason = f"permission policy {gate_policy.decision}: {gate_policy.reason}"
+                if fail("policy", options.gate_command, 126, "", blocked_reason, "Permission policy blocked gate command"):
+                    continue
+                return False
             ok, result = run_single_expect_pass(options.gate_command, options.constraints, paths.repo_dir, gate_log)
             trace["gate"] = command_result_as_dict(result)
             if not ok:
@@ -682,6 +853,11 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
                     continue
                 return False
 
+        policy_result = enforce_policy_or_fail("qa", story_obj.qa_commands, "Permission policy blocked qa command")
+        if policy_result == "retry":
+            continue
+        if policy_result == "abort":
+            return False
         ok, results, failed = run_commands("qa", story_obj.qa_commands, options.constraints, paths.repo_dir, qa_log)
         trace["qa"] = [command_result_as_dict(x) for x in results]
         if not ok and failed is not None:
@@ -694,6 +870,7 @@ def run_story(paths: Paths, prd: dict[str, Any], state: dict[str, Any], story_ob
         trace["outcome"] = "pass"
         trace["git_after"] = capture_git_snapshot(paths.repo_dir)
         _write_attempt_trace(paths.logs_dir, story_id, attempt, trace)
+        _write_policy_trace(paths.logs_dir, story_id, attempt, trace["policy"])
 
         evidence_hashes = write_evidence(
             contract["evidence"],
@@ -772,6 +949,15 @@ def main() -> int:
     )
 
     _ensure_files(paths)
+    policy_path = Path(args.permission_policy).resolve()
+    if not policy_path.exists():
+        print(f"permission policy not found: {policy_path}", file=sys.stderr)
+        return 1
+    try:
+        permission_policy = load_permission_policy(policy_path, args.permission_profile)
+    except ValueError as exc:
+        print(f"permission policy load failed: {exc}", file=sys.stderr)
+        return 1
     bootstrap_rc = _bootstrap_prd_if_needed(args, paths)
     if bootstrap_rc != 0:
         return bootstrap_rc
@@ -784,6 +970,8 @@ def main() -> int:
         emit_context_pack=args.emit_context_pack,
         lessons_mode=args.lessons_mode,
         mode=args.mode,
+        permission_profile=args.permission_profile,
+        deny_on_ask=bool(args.deny_on_ask),
     )
 
     iterations = 0
@@ -835,6 +1023,7 @@ def main() -> int:
                     qa_details = json.loads(qa_detail_path.read_text(encoding="utf-8"))
                 except json.JSONDecodeError:
                     qa_details = {}
+            requeued_from_qa = 0
             if qa_result.returncode != 0 and qa_details:
                 failed_story_ids = [sid for sid in qa_details.get("failed_story_ids", []) if sid]
                 failing_checks = qa_details.get("failing_checks", [])
@@ -843,6 +1032,7 @@ def main() -> int:
                         if str(story.get("id")) != sid:
                             continue
                         story["status"] = "todo"
+                        requeued_from_qa += 1
                         contract = ensure_story_contract(paths.repo_dir, story)
                         check = next((c for c in failing_checks if str(c.get("story_id", "")) == sid), None)
                         failed_cmd = str(check.get("command", "qa scenario failed")) if isinstance(check, dict) else "qa scenario failed"
@@ -889,12 +1079,34 @@ def main() -> int:
                 },
             )
             print("No todo stories left.")
-            return 0 if qa_result.returncode == 0 else 1
+            if qa_result.returncode == 0:
+                return 0
+            if args.loop and requeued_from_qa > 0:
+                append_progress(paths.progress_path, f"- {utc_now()} qa-dr-strange requeued={requeued_from_qa}")
+                iterations += 1
+                if iterations >= args.max_iterations:
+                    print("Reached max iterations.", file=sys.stderr)
+                    return 1
+                continue
+            return 1
 
-        ok = run_story(paths, prd, state, story_obj, options)
+        ok = run_story(paths, prd, state, story_obj, options, permission_policy)
         iterations += 1
 
         if not ok:
+            if args.loop:
+                latest_state = load_json(paths.state_path, {"failures": []})
+                deferred, action = _defer_failed_story(paths, latest_state)
+                if deferred:
+                    append_progress(
+                        paths.progress_path,
+                        f"- {utc_now()} {action} {deferred} after failed iteration; continue loop",
+                    )
+                    print(f"[Loop] {deferred} -> {action}; continue to next story")
+                if iterations >= args.max_iterations:
+                    print("Reached max iterations.", file=sys.stderr)
+                    return 1
+                continue
             return 1
         if not args.loop:
             return 0

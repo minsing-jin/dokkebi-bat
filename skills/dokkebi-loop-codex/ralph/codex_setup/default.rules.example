@@ -1,11 +1,16 @@
-# Example execpolicy rules (adjust to your environment)
+# Dokkebi Loop balanced policy baseline.
 
 # Safe reads
 allow ^(ls|pwd|cat|sed|awk|rg|find|git\ status|git\ diff|git\ log).*
 
-# Build/test commands (prompt)
-prompt ^(npm|pnpm|yarn|python3?\ -m\ pytest|go\ test|cargo\ test).*
-prompt ^(git\ push|git\ commit).*
+# Build/test commands
+allow ^(npm|pnpm|yarn|python3?\ -m\ pytest|pytest|go\ test|cargo\ test).*
 
-# Potentially dangerous operations
+# Sensitive files and destructive system-level operations
+forbid .*([/ ]\.env([.][^ /]+)?).*$
 forbid ^(rm\ -rf\ /|sudo\ .*|mkfs\ .*|dd\ .*|shutdown\ .*|reboot\ .*).*
+
+# Ask for risky git/db changes
+prompt ^(git\ push).*
+prompt ^(psql\ .*(-c|--command).*(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|TRUNCATE).*)$
+prompt ^(rm\ .*)$

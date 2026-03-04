@@ -30,7 +30,17 @@
   - Acceptance: generated stories fill required fields from `prd.md`/context heuristics and avoid `:` placeholder commands.
 - [x] P5: QA dr.strange hardened with auto-checks, failure mapping, and retry loop handoff.
   - Acceptance: failing QA checks can map to story IDs, auto-write errors/context/lessons, and requeue stories to `todo`.
-- [ ] P6: Confirm project-specific commands and update this plan.
+- [x] P6: QA failure no longer hard-stops loop when requeue candidates exist.
+  - Acceptance: with `--loop`, qa failure can requeue mapped stories and continue iterations until QA passes or max-iterations reached.
+- [x] P7: Enforce runnable phase contract and expose full execution trace in loop output.
+  - Acceptance: phase-config requires implementer/testsmith/verifier/qa commands; runtime output prints phase commands/results beyond implementer.
+- [x] P8: Root declutter and history segregation.
+  - Acceptance: root runtime/history artifacts moved under `history/development` and `history/logs`.
+- [x] P9: Loop no longer hard-stops on first failed story in `--loop` mode.
+  - Acceptance: failed story is deferred and loop continues with remaining todo stories until completion or max-iterations.
+- [x] P10: Prevent repeated blocking prompts by isolating chronic failures.
+  - Acceptance: in loop mode, failed story remains current retry target until resolved; subsequent stories run only after recovery.
+- [ ] P11: Confirm project-specific commands and update this plan.
   - Acceptance: plan has concrete build/test/lint/typecheck commands.
 
 ## Review Follow-up Tasks

@@ -36,6 +36,12 @@ def write_prd(tmp_path: Path, stories: list[dict]) -> None:
         item.setdefault("dependencies", [])
         item.setdefault("risks", [])
         item.setdefault("success_metrics", [])
+        if str(item.get("mode", "")) == "phase-config" and isinstance(item.get("phase_config"), dict):
+            phase = dict(item["phase_config"])
+            verifier = list(phase.get("verifier_commands", []))
+            phase.setdefault("testsmith_commands", list(verifier))
+            phase.setdefault("qa_commands", list(verifier))
+            item["phase_config"] = phase
         normalized.append(item)
     (tmp_path / "prd.json").write_text(json.dumps({"stories": normalized}, indent=2), encoding="utf-8")
 
@@ -188,6 +194,66 @@ def test_loop_mode_processes_all_todo_stories(tmp_path: Path) -> None:
     assert statuses == ["done", "done"]
 
 
+def test_loop_mode_retries_same_story_before_advancing(tmp_path: Path) -> None:
+    write_agents(tmp_path)
+    write_prd(
+        tmp_path,
+        [
+            {
+                "id": "S-F1",
+                "title": "always fail",
+                "status": "todo",
+                "priority": 1,
+                "builder_commands": ["true"],
+                "verifier_commands": ["false"],
+            },
+            {"id": "S-F2", "title": "should wait", "status": "todo", "priority": 2, "builder_commands": ["echo ok > ok.txt"], "verifier_commands": ["test -f ok.txt"]},
+        ],
+    )
+
+    result = run_loop(tmp_path, "--loop", "--skip-gate", "--max-iterations", "3")
+    assert result.returncode == 1
+    prd = read_prd(tmp_path)
+    s2 = next(s for s in prd["stories"] if s["id"] == "S-F2")
+    assert s2["status"] == "todo"
+
+
+def test_loop_mode_advances_after_retry_story_recovers(tmp_path: Path) -> None:
+    write_agents(tmp_path)
+    write_prd(
+        tmp_path,
+        [
+            {
+                "id": "S-BLOCK-1",
+                "title": "fails then passes",
+                "status": "todo",
+                "priority": 1,
+                "builder_commands": [
+                    "count=0; [ -f .count ] && count=$(cat .count); count=$((count+1)); echo $count > .count",
+                    "if [ \"$(cat .count)\" -ge 2 ]; then echo ok > recovered.txt; fi",
+                ],
+                "verifier_commands": ["test -f recovered.txt"],
+            },
+            {
+                "id": "S-BLOCK-2",
+                "title": "then finish",
+                "status": "todo",
+                "priority": 2,
+                "builder_commands": ["echo ok > ok.txt"],
+                "verifier_commands": ["test -f ok.txt"],
+            },
+        ],
+    )
+
+    result = run_loop(tmp_path, "--loop", "--skip-gate", "--max-iterations", "5")
+    assert result.returncode == 0, result.stderr
+    prd = read_prd(tmp_path)
+    s1 = next(s for s in prd["stories"] if s["id"] == "S-BLOCK-1")
+    s2 = next(s for s in prd["stories"] if s["id"] == "S-BLOCK-2")
+    assert s1["status"] == "done"
+    assert s2["status"] == "done"
+
+
 def test_auto_creates_agents_md_by_default(tmp_path: Path) -> None:
     write_prd(
         tmp_path,
@@ -253,6 +319,8 @@ def test_prd_validation_fails_when_required_fields_missing(tmp_path: Path) -> No
     assert result.returncode == 1
     assert "Strict PRD validation failed" in result.stderr
     assert (tmp_path / "PRD_VALIDATION_ERRORS.md").exists()
+    report = (tmp_path / "PRD_VALIDATION_ERRORS.md").read_text(encoding="utf-8")
+    assert "missing field `priority`" in report
 
 
 def test_priority_order_uses_lowest_number_first(tmp_path: Path) -> None:
@@ -766,6 +834,51 @@ def test_qa_dr_strange_requeues_failed_story_and_writes_errors(tmp_path: Path) -
     assert "qa-dr-strange" in lessons
 
 
+def test_qa_dr_strange_loop_continues_after_requeue_until_pass(tmp_path: Path) -> None:
+    write_agents(tmp_path)
+    (tmp_path / "prd.json").write_text(
+        json.dumps(
+            {
+                "stories": [
+                    {
+                        "id": "Q-RECOVER-1",
+                        "title": "recover from qa failure",
+                        "status": "done",
+                        "priority": 1,
+                        "acceptance_criteria": ["qa marker file exists"],
+                        "non_goals": [],
+                        "constraints": [],
+                        "dependencies": [],
+                        "risks": [],
+                        "success_metrics": ["qa check passes"],
+                        "mode": "phase-config",
+                            "phase_config": {
+                                "implementer_commands": ["mkdir -p .ralph/tmp && echo ok > .ralph/tmp/qa_marker.txt"],
+                                "verifier_commands": ["test -f .ralph/tmp/qa_marker.txt"],
+                                "testsmith_commands": ["test -f .ralph/tmp/qa_marker.txt"],
+                                "qa_commands": ["test -f .ralph/tmp/qa_marker.txt"],
+                            },
+                        }
+                    ],
+                "qa": {
+                    "discover_checks": False,
+                    "auto_checks": [
+                        {"name": "qa marker", "command": "test -f .ralph/tmp/qa_marker.txt", "story_id": "Q-RECOVER-1"}
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = run_loop(tmp_path, "--loop", "--skip-gate")
+    assert result.returncode == 0, result.stderr
+    prd = read_prd(tmp_path)
+    assert prd["stories"][0]["status"] == "done"
+    assert (tmp_path / ".ralph" / "qa_dr_strange_result.json").exists()
+    evidence = (tmp_path / "E2E_EVIDENCE.md").read_text(encoding="utf-8")
+    assert "qa marker" in evidence
+
+
 def test_planner_builtin_creates_adr_when_options_provided(tmp_path: Path) -> None:
     write_agents(tmp_path)
     write_prd(
@@ -811,3 +924,27 @@ def test_evidence_contains_soft_gate_and_devils_advocate(tmp_path: Path) -> None
     evidence = (tmp_path / "stories" / "V-1" / "evidence.md").read_text(encoding="utf-8")
     assert "Soft Gate Scores" in evidence
     assert "Devils Advocate" in evidence
+
+
+def test_policy_blocks_dangerous_command_and_writes_policy_log(tmp_path: Path) -> None:
+    write_agents(tmp_path)
+    write_prd(
+        tmp_path,
+        [
+            {
+                "id": "POL-1",
+                "title": "policy block",
+                "status": "todo",
+                "builder_commands": ["cat .env > leaked.txt"],
+                "verifier_commands": ["false"],
+            }
+        ],
+    )
+    result = run_loop(tmp_path, "--skip-gate", "--max-retries", "1")
+    assert result.returncode == 1
+    prd = read_prd(tmp_path)
+    assert prd["stories"][0]["status"] == "todo"
+    policy_log = tmp_path / ".ralph" / "logs" / "POL-1-policy-1.json"
+    assert policy_log.exists()
+    payload = json.loads(policy_log.read_text(encoding="utf-8"))
+    assert payload["events"][0]["decision"] == "deny"
