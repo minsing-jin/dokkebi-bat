@@ -15,6 +15,8 @@ The repository is designed around one core idea:
   - Bootstraps or refines `prd.json` and story files from a rough idea.
 - `skills/prd-md-to-json-codex/`
   - Converts `prd.md` into runnable `prd.json`.
+- `skills/clodex/`
+  - Claude-style planning and compressed handoff packet for Codex implementation.
 - `setup-dokkebi-loop.sh`
   - Links or installs Dokkebi skills/config into Codex and Claude environments.
 - `run-dokkebi-loop.sh`
@@ -73,6 +75,7 @@ This installs:
 - `~/.codex/skills/dokkebi-loop-codex`
 - `~/.codex/skills/specify-gidometa-codex`
 - `~/.codex/skills/prd-md-to-json-codex`
+- `~/.codex/skills/clodex`
 
 ### One-time global setup for Claude
 
@@ -135,6 +138,43 @@ python3 ~/.codex/skills/dokkebi-loop-codex/scripts/ralph_loop.py \
 ```
 
 Use `--deny-on-ask` if you want the loop to fail instead of proceeding on commands that are classified as `ask` by the permission policy.
+
+## Clodex workflow
+
+`clodex` is a planning-to-implementation bridge skill.
+
+Use it when you want:
+- stronger planning with multiple options
+- one compressed shared context instead of repeated long chat context
+- a clean handoff from planning into implementation
+
+Clodex uses `.clodex/` as the shared packet directory:
+- `.clodex/context.md`
+- `.clodex/plan.md`
+- `.clodex/implementation_packet.md`
+- `.clodex/status.md`
+
+Initialize the packet directory with:
+
+```bash
+mkdir -p .clodex
+cp ~/.codex/skills/clodex/templates/context.md .clodex/context.md
+cp ~/.codex/skills/clodex/templates/plan.md .clodex/plan.md
+cp ~/.codex/skills/clodex/templates/implementation_packet.md .clodex/implementation_packet.md
+cp ~/.codex/skills/clodex/templates/status.md .clodex/status.md
+```
+
+Recommended use:
+
+1. Use `clodex` to explore, compare options, and lock the plan.
+2. Write the final implementation packet under `.clodex/`.
+3. Let Codex implement from `.clodex/implementation_packet.md`.
+4. Keep `.clodex/context.md` as the canonical compressed context to save tokens.
+
+Rules:
+- `clodex` is explicit-only, like Dokkebi Loop.
+- One side is the active steward for `.clodex/context.md`.
+- The implementation side should read `.clodex/*` first before re-exploring the whole repo.
 
 ## Primary entrypoints
 
@@ -246,6 +286,7 @@ Rerun setup:
 ├── run-dokkebi-loop.sh
 ├── setup-dokkebi-loop.sh
 ├── skills/
+│   ├── clodex/
 │   ├── dokkebi-loop-codex/
 │   ├── prd-md-to-json-codex/
 │   └── specify-gidometa-codex/

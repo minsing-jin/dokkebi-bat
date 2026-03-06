@@ -38,3 +38,18 @@ python3 skills/dokkebi-loop-codex/scripts/ralph_loop.py --repo . --bootstrap-prd
 ```bash
 python3 skills/prd-md-to-json-codex/scripts/prd_md_to_json.py --repo . --input prd.md --output prd.json
 ```
+
+## clodex
+- Path: `skills/clodex`
+- Purpose: Claude-style planning, option comparison, context compression, and Codex implementation handoff를 하나의 워크플로로 제공
+
+### Quick Start
+```bash
+mkdir -p .clodex
+cp skills/clodex/templates/context.md .clodex/context.md
+cp skills/clodex/templates/plan.md .clodex/plan.md
+cp skills/clodex/templates/implementation_packet.md .clodex/implementation_packet.md
+cp skills/clodex/templates/status.md .clodex/status.md
+```
+
+`clodex`는 planning 전용 컨텍스트를 `.clodex/` 아래에 압축해서 유지하고, 그 결과를 바탕으로 Codex가 구현하도록 handoff하는 skill이다.
