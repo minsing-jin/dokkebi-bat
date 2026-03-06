@@ -1,23 +1,42 @@
-# Codex Setup Templates (Manual Copy)
+# Codex Setup Templates
 
-This directory provides templates only. It does not auto-create `.codex/` because some environments protect that path in sandbox mode.
+These files are the template source for Codex configuration used by Dokkebi Loop.
 
-## Where to copy
-- Global config: `~/.codex/`
-- Project config: `<repo>/.codex/` (create manually if needed)
+In normal use, prefer the repository setup script:
 
-## Files
-- `config.toml.example`: profile examples for Ralph build/review loops
-- `default.rules.example`: execpolicy rule examples
-
-## Example application
 ```bash
-mkdir -p ~/.codex
-cp ralph/codex_setup/config.toml.example ~/.codex/config.toml
-cp ralph/codex_setup/default.rules.example ~/.codex/default.rules
+./setup-dokkebi-loop.sh codex
 ```
 
-## Execpolicy check example
+Use manual copy only when you need to install or inspect the templates by hand.
+
+## Files
+
+- `config.toml.example`
+  - Codex profile examples for build/review roles.
+- `default.rules.example`
+  - Execpolicy baseline aligned with Dokkebi Loop permission checks.
+
+## Install manually
+
+Global install:
+
+```bash
+mkdir -p ~/.codex
+cp skills/dokkebi-loop-codex/ralph/codex_setup/config.toml.example ~/.codex/config.toml
+cp skills/dokkebi-loop-codex/ralph/codex_setup/default.rules.example ~/.codex/default.rules
+```
+
+Project-local install:
+
+```bash
+mkdir -p .codex
+cp skills/dokkebi-loop-codex/ralph/codex_setup/config.toml.example .codex/config.toml
+cp skills/dokkebi-loop-codex/ralph/codex_setup/default.rules.example .codex/default.rules
+```
+
+## Validate rules
+
 ```bash
 codex execpolicy check --rules ~/.codex/default.rules --command "rg --files"
 codex execpolicy check --rules ~/.codex/default.rules --command "rm -rf build"
