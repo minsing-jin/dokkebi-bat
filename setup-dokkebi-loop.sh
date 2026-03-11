@@ -27,6 +27,7 @@ install_codex_skills() {
   local specify_target="${skills_root}/specify-gidometa-codex"
   local prdmd_target="${skills_root}/prd-md-to-json-codex"
   local clodex_target="${skills_root}/clodex"
+  local superpower_target="${skills_root}/superpower"
 
   mkdir -p "$skills_root"
   rm -rf "$legacy_target"
@@ -34,6 +35,7 @@ install_codex_skills() {
   link_skill_dir "$ROOT_DIR/skills/specify-gidometa-codex" "$specify_target"
   link_skill_dir "$ROOT_DIR/skills/prd-md-to-json-codex" "$prdmd_target"
   link_skill_dir "$ROOT_DIR/skills/clodex" "$clodex_target"
+  link_skill_dir "$ROOT_DIR/skills/superpower" "$superpower_target"
   echo "[setup] Codex skills linked to $skills_root (canonical: dokkebi-loop-codex)"
 }
 
@@ -45,13 +47,15 @@ install_claude() {
   local specify_target="${skills_root}/specify-gidometa-codex"
   local prdmd_target="${skills_root}/prd-md-to-json-codex"
   local clodex_target="${skills_root}/clodex"
+  local superpower_target="${skills_root}/superpower"
   mkdir -p "$skills_root"
   mkdir -p "$hooks_root"
-  rm -rf "$legacy_target" "$dokkebi_target" "$specify_target" "$prdmd_target" "$clodex_target"
+  rm -rf "$legacy_target" "$dokkebi_target" "$specify_target" "$prdmd_target" "$clodex_target" "$superpower_target"
   cp -R "$SKILL_DIR" "$dokkebi_target"
   cp -R "$ROOT_DIR/skills/specify-gidometa-codex" "$specify_target"
   cp -R "$ROOT_DIR/skills/prd-md-to-json-codex" "$prdmd_target"
   cp -R "$ROOT_DIR/skills/clodex" "$clodex_target"
+  cp -R "$ROOT_DIR/skills/superpower" "$superpower_target"
   cp "$SKILL_DIR/hooks/permission-gates.py" "$hooks_root/permission-gates.py"
   cp "$SKILL_DIR/hooks/permission-reviewer.py" "$hooks_root/permission-reviewer.py"
   cp "$SKILL_DIR/hooks/workflow-post.sh" "$hooks_root/workflow-post.sh"

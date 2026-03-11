@@ -1,0 +1,75 @@
+{
+  "source_root": "~/.codex/superpowers/skills_disabled",
+  "skills": [
+    {
+      "name": "super-brainstorming",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with clodex planning and option generation."
+    },
+    {
+      "name": "super-dispatching-parallel-agents",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with clodex and multi-agent planning workflows."
+    },
+    {
+      "name": "super-executing-plans",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with clodex implementation handoff."
+    },
+    {
+      "name": "super-finishing-a-development-branch",
+      "status": "disabled-by-default",
+      "reason": "Safe but not enabled until explicitly requested."
+    },
+    {
+      "name": "super-receiving-code-review",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with review and verifier workflows."
+    },
+    {
+      "name": "super-requesting-code-review",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with review and verifier workflows."
+    },
+    {
+      "name": "super-subagent-driven-development",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with clodex and Dokkebi loop orchestration."
+    },
+    {
+      "name": "super-systematic-debugging",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with Dokkebi loop debugging and errors.md flow."
+    },
+    {
+      "name": "super-test-driven-development",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with testsmith and verifier stages."
+    },
+    {
+      "name": "super-using-git-worktrees",
+      "status": "disabled-by-default",
+      "reason": "Useful but off until explicitly enabled."
+    },
+    {
+      "name": "super-using-superpowers",
+      "status": "disabled-by-default",
+      "reason": "Useful as onboarding, but not auto-enabled."
+    },
+    {
+      "name": "super-verification-before-completion",
+      "status": "disabled-by-default",
+      "reason": "Can overlap with verifier and QA gate behavior."
+    },
+    {
+      "name": "super-writing-plans",
+      "status": "disabled-by-default",
+      "reason": "Can overlap strongly with clodex planning."
+    },
+    {
+      "name": "super-writing-skills",
+      "status": "disabled-by-default",
+      "reason": "Useful but off until explicitly enabled."
+    }
+  ]
+}

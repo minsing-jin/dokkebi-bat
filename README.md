@@ -17,6 +17,8 @@ The repository is designed around one core idea:
   - Converts `prd.md` into runnable `prd.json`.
 - `skills/clodex/`
   - Claude-style planning and compressed handoff packet for Codex implementation.
+- `skills/superpower/`
+  - Bridge skill for cataloging and selectively activating external `super-*` skills without enabling all of them by default.
 - `setup-dokkebi-loop.sh`
   - Links or installs Dokkebi skills/config into Codex and Claude environments.
 - `run-dokkebi-loop.sh`
@@ -76,6 +78,7 @@ This installs:
 - `~/.codex/skills/specify-gidometa-codex`
 - `~/.codex/skills/prd-md-to-json-codex`
 - `~/.codex/skills/clodex`
+- `~/.codex/skills/superpower`
 
 ### One-time global setup for Claude
 
@@ -175,6 +178,35 @@ Rules:
 - `clodex` is explicit-only, like Dokkebi Loop.
 - One side is the active steward for `.clodex/context.md`.
 - The implementation side should read `.clodex/*` first before re-exploring the whole repo.
+
+## Superpower bridge
+
+`superpower` is a registry and activation bridge for the external repository at:
+- `~/.codex/superpowers`
+
+It does not enable all `super-*` skills by default.
+
+That is intentional because several of them overlap with:
+- `clodex`
+- `dokkebi-loop-codex`
+
+Inspect the catalog:
+
+```bash
+python3 skills/superpower/scripts/list_superpowers.py
+```
+
+Activate one superpower explicitly:
+
+```bash
+bash skills/superpower/scripts/activate_superpower.sh super-writing-plans
+```
+
+Temporarily switch global Codex skills into `superpower`-only mode:
+
+```bash
+bash scripts/enable_superpower_only.sh
+```
 
 ## Primary entrypoints
 

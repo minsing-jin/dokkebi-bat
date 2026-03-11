@@ -53,3 +53,15 @@ cp skills/clodex/templates/status.md .clodex/status.md
 ```
 
 `clodex`는 planning 전용 컨텍스트를 `.clodex/` 아래에 압축해서 유지하고, 그 결과를 바탕으로 Codex가 구현하도록 handoff하는 skill이다.
+
+## superpower
+- Path: `skills/superpower`
+- Purpose: 외부 `~/.codex/superpowers` 저장소의 `super-*` 스킬을 dokkebi-bat 안에서 catalog하고 선택적으로 활성화하는 브리지
+
+### Quick Start
+```bash
+python3 skills/superpower/scripts/list_superpowers.py
+bash skills/superpower/scripts/activate_superpower.sh super-writing-plans
+```
+
+`superpower`는 모든 superpower를 기본 활성화하지 않는다. 충돌 가능성이 있는 스킬은 catalog만 유지하고, 필요한 것만 명시적으로 켠다.
